@@ -293,8 +293,8 @@ class SettingsPageState extends State<SettingsPage> {
                                         ElevatedButton(
                                           child: const Text('Reset'),
                                           style: ElevatedButton.styleFrom(
-                                            primary: Colors.blueGrey,
-                                            onPrimary: Colors.white,
+                                            backgroundColor: Colors.blueGrey,
+                                            foregroundColor: Colors.white,
                                           ),
                                           onPressed: () {
                                             setState(() {

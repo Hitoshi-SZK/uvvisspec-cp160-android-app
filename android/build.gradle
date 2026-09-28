@@ -1,16 +1,3 @@
-buildscript {
-    ext.kotlin_version = '1.5.31'
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:4.1.0'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
-}
-
 allprojects {
     repositories {
         google()
@@ -19,11 +6,38 @@ allprojects {
 }
 
 rootProject.buildDir = '../build'
+
 subprojects {
+    afterEvaluate { proj ->
+        if (proj.hasProperty('android')) {
+            def androidExt = proj.extensions.findByName('android')
+            if (androidExt != null && androidExt.namespace == null) {
+                def manifestFile = proj.file('src/main/AndroidManifest.xml')
+                if (manifestFile.exists()) {
+                    def manifestText = manifestFile.text
+                    def matcher = (manifestText =~ /package="([^"]+)"/)
+                    if (matcher.find()) {
+                        androidExt.namespace = matcher.group(1)
+                    }
+                }
+            }
+        }
+
+        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
+        tasks.withType(JavaCompile).configureEach {
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
+        }
+    }
+
     project.buildDir = "${rootProject.buildDir}/${project.name}"
     project.evaluationDependsOn(':app')
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
+tasks.register("clean", Delete) {
+    delete rootProject.layout.buildDirectory
 }

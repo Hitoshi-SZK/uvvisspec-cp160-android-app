@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:charts_flutter/flutter.dart' as charts;
+import 'package:fl_chart/fl_chart.dart';
 import 'uvvisspec.dart';
 import 'settings.dart';
 import 'result_storage.dart';
@@ -389,7 +389,8 @@ class HomeState extends State<Home> {
                       child: const Text("DARK"),
                       style: ElevatedButton.styleFrom(
                           shape: const StadiumBorder(),
-                          primary: Colors.white38),
+                          padding: EdgeInsets.zero,
+                          backgroundColor: Colors.white38),
                     ),
                   ),
                   SizedBox(
@@ -408,7 +409,8 @@ class HomeState extends State<Home> {
                           !_measuring ? const Text("MEAS") : const Text("HOLD"),
                       style: ElevatedButton.styleFrom(
                           shape: const StadiumBorder(),
-                          primary: !_measuring
+                          padding: EdgeInsets.zero,
+                          backgroundColor: !_measuring
                               ? Colors.green
                               : Colors.blue.shade800),
                     ),
@@ -422,16 +424,24 @@ class HomeState extends State<Home> {
                         final filename =
                             '${now.year}${now.month.toString().padLeft(2, "0")}${now.day.toString().padLeft(2, "0")}${now.hour.toString().padLeft(2, "0")}${now.minute.toString().padLeft(2, "0")}${now.second.toString().padLeft(2, "0")}';
                         _currentResult.measureDatetime = now.toString();
-                        storage.write(filename, _currentResult);
-                        var dialog = const AlertDialog(
-                          content: Text("保存しました."),
-                        );
-                        await showDialog(
-                            context: context, builder: (x) => dialog);
+                        try {
+                          await storage.write(filename, _currentResult);
+                          var dialog = const AlertDialog(
+                            content: Text("保存しました."),
+                          );
+                          await showDialog(context: context, builder: (x) => dialog);
+                        } catch (e) {
+                          var dialog = AlertDialog(
+                            content: Text("保存に失敗しました。\n$e"),
+                          );
+                          await showDialog(context: context, builder: (x) => dialog);
+                        }
                       },
                       child: const Text("STORE"),
                       style: ElevatedButton.styleFrom(
-                          shape: const StadiumBorder(), primary: Colors.orange),
+                          shape: const StadiumBorder(),
+                          padding: EdgeInsets.zero,
+                          backgroundColor: Colors.orange),
                     ),
                   ),
                 ],
@@ -443,86 +453,108 @@ class HomeState extends State<Home> {
 }
 
 class SpectralLineChart extends StatelessWidget {
-  final charts.Series<dynamic, num>? series;
-  final bool? animate;
+  final List<LinearSpectral> data;
+  final bool animate;
   final double sumRangeMin;
   final double sumRangeMax;
-  SpectralLineChart(
-      this.series, this.animate, this.sumRangeMin, this.sumRangeMax);
+
+  SpectralLineChart(this.data, this.animate, this.sumRangeMin, this.sumRangeMax);
 
   factory SpectralLineChart.create(List<double> wl, List<double> opticalPower,
       double sumRangeMin, double sumRangeMax) {
-    return SpectralLineChart(_createSpectralChartData(wl, opticalPower), false,
-        sumRangeMin, sumRangeMax);
-  }
-
-  static charts.Series<LinearSpectral, int> _createSpectralChartData(
-      List<double> wl, List<double> opticalPower) {
     List<LinearSpectral> l = [];
     for (var i = 0; i < wl.length; i++) {
       l.add(LinearSpectral(wl[i], opticalPower[i]));
     }
-
-    return charts.Series<LinearSpectral, int>(
-      id: 'Spectral',
-      colorFn: (_, __) => charts.MaterialPalette.blue.shadeDefault,
-      areaColorFn: (_, __) => charts.MaterialPalette.transparent,
-      domainFn: (LinearSpectral sp, _) => sp.waveLength.toInt(),
-      measureFn: (LinearSpectral sp, _) => sp.opticalPower,
-      data: l,
-      strokeWidthPxFn: (datum, index) => 4,
-    );
+    return SpectralLineChart(l, false, sumRangeMin, sumRangeMax);
   }
 
   @override
-  Widget build(BuildContext context) {
-    return charts.LineChart([series!],
-        animate: animate,
-        defaultRenderer: charts.LineRendererConfig(
-            includeArea: true, stacked: false, radiusPx: 6, roundEndCaps: true),
-        domainAxis: const charts.NumericAxisSpec(
-            viewport: charts.NumericExtents(300.0, 800.0),
-            showAxisLine: false,
-            renderSpec: charts.SmallTickRendererSpec(
-              labelStyle: charts.TextStyleSpec(
-                fontSize: 15,
-                color: charts.MaterialPalette.white,
+Widget build(BuildContext context) {
+  final spots =
+      data.map((sp) => FlSpot(sp.waveLength, sp.opticalPower)).toList();
+
+  final maxY = data.isEmpty
+      ? 1.0
+      : data.map((e) => e.opticalPower).reduce((a, b) => a > b ? a : b) * 1.1;
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+    child: LineChart(
+      LineChartData(
+        minX: 290.0,
+        maxX: 810.0,
+        minY: 0,
+        maxY: maxY == 0 ? 1.0 : maxY,
+        clipData: const FlClipData.none(),
+        gridData: const FlGridData(show: false),
+        borderData: FlBorderData(show: false),
+        titlesData: FlTitlesData(
+          leftTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            axisNameWidget:
+                const Text('nm', style: TextStyle(color: Colors.white, fontSize: 15)),
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 24,
+              interval: 100,
+              getTitlesWidget: (value, meta) {
+                if (value < 300 || value > 800) return const SizedBox.shrink();
+                return Text(
+                  value.toInt().toString(),
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                );
+              },
+            ),
+          ),
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: false,
+            color: Colors.blue,
+            barWidth: 4,
+            dotData: const FlDotData(show: false),
+            belowBarData:
+                BarAreaData(show: true, color: Colors.blue.withOpacity(0.3)),
+          ),
+        ],
+        extraLinesData: ExtraLinesData(
+          verticalLines: [
+            VerticalLine(
+              x: sumRangeMin,
+              color: Colors.white,
+              strokeWidth: 2,
+              label: VerticalLineLabel(
+                show: true,
+                alignment: Alignment.topLeft,
+                style: const TextStyle(color: Colors.white),
+                labelResolver: (line) => sumRangeMin.toInt().toString(),
               ),
-              tickLengthPx: 0,
             ),
-            tickProviderSpec: charts.BasicNumericTickProviderSpec(
-                dataIsInWholeNumbers: true, desiredTickCount: 9)),
-        primaryMeasureAxis: const charts.NumericAxisSpec(
-            renderSpec: charts.NoneRenderSpec(), showAxisLine: false),
-        behaviors: [
-          charts.ChartTitle('nm',
-              titleStyleSpec: const charts.TextStyleSpec(
-                  color: charts.MaterialPalette.white, fontSize: 15),
-              innerPadding: 0,
-              behaviorPosition: charts.BehaviorPosition.bottom,
-              titleOutsideJustification: charts.OutsideJustification.end),
-          charts.RangeAnnotation([
-            charts.LineAnnotationSegment(
-              sumRangeMin, charts.RangeAnnotationAxisType.domain,
-              color: charts.ColorUtil.fromDartColor(Colors.white),
-              strokeWidthPx: 2,
-              startLabel: sumRangeMin.toInt().toString() + "",
-              labelStyleSpec: const charts.TextStyleSpec(
-                  color: charts.MaterialPalette.white),
-              //labelDirection: charts.AnnotationLabelDirection.horizontal
+            VerticalLine(
+              x: sumRangeMax,
+              color: Colors.white,
+              strokeWidth: 2,
+              label: VerticalLineLabel(
+                show: true,
+                alignment: Alignment.topRight,
+                style: const TextStyle(color: Colors.white),
+                labelResolver: (line) => sumRangeMax.toInt().toString(),
+              ),
             ),
-            charts.LineAnnotationSegment(
-              sumRangeMax, charts.RangeAnnotationAxisType.domain,
-              color: charts.ColorUtil.fromDartColor(Colors.white),
-              strokeWidthPx: 2,
-              endLabel: sumRangeMax.toInt().toString() + "",
-              labelStyleSpec: const charts.TextStyleSpec(
-                  color: charts.MaterialPalette.white),
-              //labelDirection: charts.AnnotationLabelDirection.horizontal
-            ),
-          ]),
-        ]);
-  }
+          ],
+        ),
+      ),
+      duration: animate ? const Duration(milliseconds: 250) : Duration.zero,
+    ),
+  );
+}
 }
 
 class LinearSpectral {
@@ -531,3 +563,4 @@ class LinearSpectral {
 
   LinearSpectral(this.waveLength, this.opticalPower);
 }
+
